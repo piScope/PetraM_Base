@@ -222,7 +222,7 @@ def cosd(x): return np.cos(x * np.pi / 180.)
 def sind(x): return np.sin(x * np.pi / 180.)
 def tand(x): return np.tan(x * np.pi / 180.)
 
-from petram.solver.parametric_scanner import Scan
+
 var_g = {'sin': np.sin,
          'cos': np.cos,
          'tan': np.tan,
@@ -250,12 +250,13 @@ var_g = {'sin': np.sin,
          'min': np.min,
          'sign': np.sign,
          'ones': np.ones,
-         'eye':np.eye,
+         'eye': np.eye,
          'diag': np.diag,
          'zeros': np.zeros,
          'nan': np.nan,
          'inf': np.inf,
          'inv': np.linalg.inv,
+         'norm': np.linalg.norm,
          'linspace': np.linspace,
          'logspace': np.logspace,
          'Scan': Scan}
@@ -1862,12 +1863,22 @@ class GFScalarVariable(GridFunctionVariable):
             else:
                 self.func_i = None
         else:
-            self.isVectorFE = False
-            self.func_r = mfem.GridFunctionCoefficient(gf_real)
-            if gf_imag is not None:
-                self.func_i = mfem.GridFunctionCoefficient(gf_imag)
+            vdim = gf_real.FESpace().GetVDim()
+            if vdim == 1:
+                self.isVectorFE = False
+                self.func_r = mfem.GridFunctionCoefficient(gf_real)
+                if gf_imag is not None:
+                    self.func_i = mfem.GridFunctionCoefficient(gf_imag)
+                else:
+                    self.func_i = None
             else:
-                self.func_i = None
+                self.isVectorFE = True
+                self.func_r = mfem.VectorGridFunctionCoefficient(gf_real)
+                if gf_imag is not None:
+                    self.func_i = mfem.VectorGridFunctionCoefficient(gf_imag)
+                else:
+                    self.func_i = None
+
         self.isDerived = True
 
     def eval_local_from_T_ip(self):
@@ -1971,7 +1982,8 @@ class GFScalarVariable(GridFunctionVariable):
                 elif gf.VectorDim() > 1:
                     def func(i, side, ir, vals, tr, in_gf=gf):
                         #in_gf.GetValues(i, ir, vals, tr, vdim=self.comp - 1)
-                        in_gf.GetValues(i, ir, vals, tr, self.comp-1)
+                        #in_gf.GetValues(i, ir, vals, tr, self.comp-1)
+                        in_gf.GetValues(i, ir, vals, tr, self.comp)
                     return func
                 else:
                     def func(i, side, ir, vals, tr, in_gf=gf):
@@ -2034,7 +2046,8 @@ class GFScalarVariable(GridFunctionVariable):
                 #    def func(i, ir, vals, tr, in_gf=gf):
                 if gf.VectorDim() > 1:
                     def func(i, ir, vals, tr, in_gf=gf):
-                        in_gf.GetValues(i, ir, vals, tr, self.comp - 1)
+                        #in_gf.GetValues(i, ir, vals, tr, self.comp-1)
+                        in_gf.GetValues(i, ir, vals, tr, self.comp)
                     return func
                 else:
                     def func(i, ir, vals, tr, in_gf=gf):
@@ -2050,7 +2063,8 @@ class GFScalarVariable(GridFunctionVariable):
                 elif gf.VectorDim() > 1:
                     def func(i, ir, vals, tr, in_gf=gf):
                         in_gf.GetFaceValues(
-                            i, side, ir, vals, tr, self.comp - 1)
+                            i, side, ir, vals, tr, self.comp)
+                        # i, side, ir, vals, tr, self.comp - 1)
                     return func
                 else:
                     def func(i, ir, vals, tr, in_gf=gf):
@@ -2127,14 +2141,16 @@ class GFScalarVariable(GridFunctionVariable):
                     self.gfr.GetVectorValue(iele, ip, d)
                     val = d[self.comp - 1]
                 else:
-                    val = self.gfr.GetValue(iele, ip, self.comp - 1)
+                    #val = self.gfr.GetValue(iele, ip, self.comp - 1)
+                    val = self.gfr.GetValue(iele, ip, self.comp)
 
             if self.gfi is not None:
                 if isVector:
                     self.gfi.GetVectorValue(iele, ip, d)
                     val += 1j * d[self.comp - 1]
                 else:
-                    val += 1j * self.gfi.GetValue(iele, ip, self.comp - 1)
+                    #val += 1j * self.gfi.GetValue(iele, ip, self.comp - 1)
+                    val += 1j * self.gfi.GetValue(iele, ip, self.comp)
 
             data[jj] = val
             jj = jj + 1
@@ -2175,7 +2191,8 @@ class GFVectorVariable(GridFunctionVariable):
 
         self.dim = gf_real.VectorDim()
         name = gf_real.FESpace().FEColl().Name()
-        if name.startswith("ND") or name.startswith("RT"):
+        #if name.startswith("ND") or name.startswith("RT"):
+        if True:
             self.isVectorFE = True
             self.func_r = mfem.VectorGridFunctionCoefficient(gf_real)
             if gf_imag is not None:
@@ -2183,22 +2200,27 @@ class GFVectorVariable(GridFunctionVariable):
             else:
                 self.func_i = None
 
+
+
+        '''
         else:
             self.isVectorFE = False
-            self.func_r = [mfem.GridFunctionCoefficient(gf_real, comp=k + 1)
+            self.func_r = [mfem.GridFunctionCoefficient(gf_real, k + 1)
                            for k in range(self.dim)]
 
             if gf_imag is not None:
-                self.func_i = [mfem.GridFunctionCoefficient(gf_imag, comp=k + 1)
+                self.func_i = [mfem.GridFunctionCoefficient(gf_imag, k + 1)
                                for k in range(self.dim)]
             else:
                 self.func_i = None
+        '''
         self.isDerived = True
 
     def eval_local_from_T_ip(self):
         if not self.isDerived:
             self.set_funcs()
-        if self.isVectorFE:
+
+        if True:
             if self.func_i is None:
                 v = mfem.Vector()
                 self.func_r.Eval(v, self.T, self.ip)
@@ -2209,6 +2231,10 @@ class GFVectorVariable(GridFunctionVariable):
                 self.func_r.Eval(v1, self.T, self.ip)
                 self.func_i.Eval(v2, self.T, self.ip)
                 return v1.GetDataArray().copy() + 1j * v2.GetDataArray().copy()
+
+
+
+        '''
         else:
             if self.func_i is None:
                 return np.array([func_r.Eval(self.T, self.ip) for
@@ -2218,6 +2244,7 @@ class GFVectorVariable(GridFunctionVariable):
                                   1j * func_i.Eval(self.T, self.ip))
                                  for func_r, func_i
                                  in zip(self.func_r, self.func_i)])
+        '''
 
     def nodal_values(self, iele=None, el2v=None, wverts=None,
                      **kwargs):
